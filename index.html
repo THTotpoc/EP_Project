@@ -1,18 +1,36 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Total EP Dashboard</title>
   <style>
-    html, body, #reportContainer {
-      height: 100%;
+    html, body {
       margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+    }
+
+    #status {
+      padding: 16px;
+      background: #111827;
+      color: #fff;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    #reportContainer {
+      height: calc(100vh - 80px);
+      min-height: 700px;
+      background: #fff;
     }
   </style>
   <script src="https://alcdn.msauth.net/browser/2.39.0/js/msal-browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.23.1/dist/powerbi.min.js"></script>
 </head>
 <body>
+  <div id="status">Starting...</div>
   <div id="reportContainer"></div>
 
   <script>
@@ -21,14 +39,27 @@
     const pageName = "b4835cfc77aa7e7e2bf6";
     const tableName = "project_EP_dashboard";
     const columnName = "matched_project_lib_id";
+    const redirectUri = "https://thtotpoc.github.io/EP_Project/";
 
     const libId = new URLSearchParams(window.location.search).get("libId");
+    const statusEl = document.getElementById("status");
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+      console.log(message);
+    }
+
+    function showError(error) {
+      const message = error && error.message ? error.message : String(error);
+      statusEl.textContent = "Error:\n" + message;
+      console.error(error);
+    }
 
     const msalApp = new msal.PublicClientApplication({
       auth: {
         clientId: "29a0fbc8-56af-441c-9f5a-1f7494a2d23f",
         authority: "https://login.microsoftonline.com/971aa8fb-beb9-4780-a117-0013ed22d332",
-        redirectUri: "https://aodocstotalpoc.com/pbi-total-ep/"
+        redirectUri: redirectUri
       },
       cache: {
         cacheLocation: "sessionStorage"
@@ -36,16 +67,20 @@
     });
 
     async function getPowerBiToken() {
+      setStatus("Initializing Microsoft sign-in...");
       await msalApp.initialize();
 
       let account = msalApp.getAllAccounts()[0];
+
       if (!account) {
+        setStatus("Opening Microsoft sign-in...");
         await msalApp.loginPopup({
           scopes: ["https://analysis.windows.net/powerbi/api/Report.Read.All"]
         });
         account = msalApp.getAllAccounts()[0];
       }
 
+      setStatus("Getting Power BI access token...");
       const token = await msalApp.acquireTokenSilent({
         account,
         scopes: ["https://analysis.windows.net/powerbi/api/Report.Read.All"]
@@ -54,7 +89,7 @@
       return token.accessToken;
     }
 
-    async function embed() {
+    async function embedReport() {
       const accessToken = await getPowerBiToken();
       const models = window["powerbi-client"].models;
 
@@ -69,14 +104,16 @@
         filterType: models.FilterType.Basic
       }] : [];
 
+      setStatus("Embedding report...");
+
       const config = {
         type: "report",
         tokenType: models.TokenType.Aad,
-        accessToken,
+        accessToken: accessToken,
         id: reportId,
-        embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${reportId}&groupId=${groupId}`,
-        pageName,
-        filters,
+        embedUrl: "https://app.powerbi.com/reportEmbed?reportId=" + reportId + "&groupId=" + groupId,
+        pageName: pageName,
+        filters: filters,
         settings: {
           panes: {
             filters: { visible: false },
@@ -85,10 +122,22 @@
         }
       };
 
-      powerbi.embed(document.getElementById("reportContainer"), config);
+      const report = powerbi.embed(document.getElementById("reportContainer"), config);
+
+      report.on("loaded", function () {
+        setStatus("Report loaded.");
+      });
+
+      report.on("rendered", function () {
+        setStatus("Report rendered.");
+      });
+
+      report.on("error", function (event) {
+        showError(event.detail);
+      });
     }
 
-    embed().catch(console.error);
+    embedReport().catch(showError);
   </script>
 </body>
 </html>
