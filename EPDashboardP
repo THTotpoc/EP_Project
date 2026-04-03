@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Total EP Dashboard</title>
+  <style>
+    html, body, #reportContainer {
+      height: 100%;
+      margin: 0;
+    }
+  </style>
+  <script src="https://alcdn.msauth.net/browser/2.39.0/js/msal-browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.23.1/dist/powerbi.min.js"></script>
+</head>
+<body>
+  <div id="reportContainer"></div>
+
+  <script>
+    const reportId = "03bd2531-59bc-4fc8-a194-b65ecc2da216";
+    const groupId = "45d694f7-645d-4408-905b-b0b07f8d8fd6";
+    const pageName = "b4835cfc77aa7e7e2bf6";
+    const tableName = "project_EP_dashboard";
+    const columnName = "matched_project_lib_id";
+
+    const libId = new URLSearchParams(window.location.search).get("libId");
+
+    const msalApp = new msal.PublicClientApplication({
+      auth: {
+        clientId: "29a0fbc8-56af-441c-9f5a-1f7494a2d23f",
+        authority: "https://login.microsoftonline.com/971aa8fb-beb9-4780-a117-0013ed22d332",
+        redirectUri: "https://aodocstotalpoc.com/pbi-total-ep/"
+      },
+      cache: {
+        cacheLocation: "sessionStorage"
+      }
+    });
+
+    async function getPowerBiToken() {
+      await msalApp.initialize();
+
+      let account = msalApp.getAllAccounts()[0];
+      if (!account) {
+        await msalApp.loginPopup({
+          scopes: ["https://analysis.windows.net/powerbi/api/Report.Read.All"]
+        });
+        account = msalApp.getAllAccounts()[0];
+      }
+
+      const token = await msalApp.acquireTokenSilent({
+        account,
+        scopes: ["https://analysis.windows.net/powerbi/api/Report.Read.All"]
+      });
+
+      return token.accessToken;
+    }
+
+    async function embed() {
+      const accessToken = await getPowerBiToken();
+      const models = window["powerbi-client"].models;
+
+      const filters = libId ? [{
+        $schema: "http://powerbi.com/product/schema#basic",
+        target: {
+          table: tableName,
+          column: columnName
+        },
+        operator: "In",
+        values: [libId],
+        filterType: models.FilterType.Basic
+      }] : [];
+
+      const config = {
+        type: "report",
+        tokenType: models.TokenType.Aad,
+        accessToken,
+        id: reportId,
+        embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${reportId}&groupId=${groupId}`,
+        pageName,
+        filters,
+        settings: {
+          panes: {
+            filters: { visible: false },
+            pageNavigation: { visible: false }
+          }
+        }
+      };
+
+      powerbi.embed(document.getElementById("reportContainer"), config);
+    }
+
+    embed().catch(console.error);
+  </script>
+</body>
+</html>
