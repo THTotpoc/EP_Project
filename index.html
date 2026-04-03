@@ -20,32 +20,17 @@
       white-space: pre-wrap;
     }
 
-    #toolbar {
-      padding: 12px 16px;
-      background: #fff;
-      border-bottom: 1px solid #ddd;
-    }
-
-    #loadButton {
-      padding: 10px 16px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-
     #reportContainer {
-      height: calc(100vh - 110px);
+      height: calc(100vh - 80px);
       min-height: 700px;
       background: #fff;
     }
   </style>
   <script src="https://unpkg.com/@azure/msal-browser@4.21.1/lib/msal-browser.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.23.1/dist/powerbi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.23.1/dist/powerbi.min.js"></script>
 </head>
 <body>
-  <div id="status">Initializing...</div>
-  <div id="toolbar">
-    <button id="loadButton" type="button" disabled>Load dashboard</button>
-  </div>
+  <div id="status">Starting...</div>
   <div id="reportContainer"></div>
 
   <script>
@@ -58,7 +43,6 @@
 
     const libId = new URLSearchParams(window.location.search).get("libId");
     const statusEl = document.getElementById("status");
-    const loadButton = document.getElementById("loadButton");
 
     function setStatus(message) {
       statusEl.textContent = message;
@@ -69,7 +53,6 @@
       const message = error && error.message ? error.message : String(error);
       statusEl.textContent = "Error:\n" + message;
       console.error(error);
-      loadButton.disabled = false;
     }
 
     const msalApp = new msal.PublicClientApplication({
@@ -83,41 +66,30 @@
       }
     });
 
-    async function initApp() {
-      await msalApp.initialize();
-      setStatus("Ready.");
-      loadButton.disabled = false;
-    }
-
     async function getPowerBiToken() {
-      const scopes = ["https://analysis.windows.net/powerbi/api/Report.Read.All"];
+      setStatus("Initializing Microsoft sign-in...");
+      await msalApp.initialize();
+
       let account = msalApp.getAllAccounts()[0];
 
       if (!account) {
         setStatus("Opening Microsoft sign-in...");
-        const loginResponse = await msalApp.loginPopup({ scopes });
-        account = loginResponse.account;
+        await msalApp.loginPopup({
+          scopes: ["https://analysis.windows.net/powerbi/api/Report.Read.All"]
+        });
+        account = msalApp.getAllAccounts()[0];
       }
 
       setStatus("Getting Power BI access token...");
-      try {
-        const tokenResponse = await msalApp.acquireTokenSilent({
-          account,
-          scopes
-        });
-        return tokenResponse.accessToken;
-      } catch (error) {
-        setStatus("Interactive consent/sign-in required...");
-        const tokenResponse = await msalApp.acquireTokenPopup({
-          account,
-          scopes
-        });
-        return tokenResponse.accessToken;
-      }
+      const token = await msalApp.acquireTokenSilent({
+        account,
+        scopes: ["https://analysis.windows.net/powerbi/api/Report.Read.All"]
+      });
+
+      return token.accessToken;
     }
 
     async function embedReport() {
-      loadButton.disabled = true;
       const accessToken = await getPowerBiToken();
       const models = window["powerbi-client"].models;
 
@@ -137,11 +109,11 @@
       const config = {
         type: "report",
         tokenType: models.TokenType.Aad,
-        accessToken,
+        accessToken: accessToken,
         id: reportId,
         embedUrl: "https://app.powerbi.com/reportEmbed?reportId=" + reportId + "&groupId=" + groupId,
-        pageName,
-        filters,
+        pageName: pageName,
+        filters: filters,
         settings: {
           panes: {
             filters: { visible: false },
@@ -165,11 +137,7 @@
       });
     }
 
-    loadButton.addEventListener("click", function () {
-      embedReport().catch(showError);
-    });
-
-    initApp().catch(showError);
+    embedReport().catch(showError);
   </script>
 </body>
 </html>
